@@ -1,0 +1,43 @@
+@import url("https://fonts.googleapis.com/css2?family=Paytone+One&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap");
+
+@import "tailwindcss";
+
+@theme {
+    --color-primary: #ffaf42;
+    --color-copy: #0d0c22;
+    --color-gray: #9a9fae;
+    --color-foreground: #ede8e8;
+    --color-background: #fff;
+
+    --font-payton-one: "Paytone One", sans-serif;
+    --font-roboto: "Roboto", sans-serif;
+}
+
+html,
+body {
+    width: 100%;
+    color: var(--color-copy);
+    background-color: var(--color-background);
+    scroll-behavior: smooth;
+    overflow-x: hidden;
+    font-family: var(--font-roboto);
+}
+
+button {
+    cursor: pointer;
+}
+
+a {
+    display: inline-block;
+}
+
+@utility containerx {
+    @apply max-w-screen-xl mx-auto px-6;
+}
+
+@utility flex-center {
+    @apply flex items-center justify-center;
+}
+
+@layer components {
+}
