@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.10.34707.107
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PetStoreAPI", "PetStoreAPI\PetStoreAPI.csproj", "{C197F20C-07E8-4124-861C-65945B8556A7}"
+	ProjectSection(ProjectDependencies) = postProject
+		{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F} = {EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PetStoreAPI_Utility", "PetStoreAPI_Utility\PetStoreAPI_Utility.csproj", "{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C197F20C-07E8-4124-861C-65945B8556A7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C197F20C-07E8-4124-861C-65945B8556A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C197F20C-07E8-4124-861C-65945B8556A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C197F20C-07E8-4124-861C-65945B8556A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EAA5FE31-1320-4F22-B2C1-B2AB7B5AE88F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5A29CC9B-7027-478B-BC43-D96EF092868A}
+	EndGlobalSection
+EndGlobal
