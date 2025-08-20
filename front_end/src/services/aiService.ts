@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { AI_URL } from "../utils";
 
 interface GenerateDescription {
@@ -14,15 +14,21 @@ export const generateDescription = async (
     breed: string,
 ): Promise<GenerateDescription | null> => {
     try {
-        const { data } = await axios.post(AI_URL + "/generate-description", {
+        const baseUrl = AI_URL.replace(/\/+$/, "");
+        const { data } = await axios.post(`${baseUrl}/generate-description`, {
             type: type,
             breed: breed,
         });
 
         if (data) return data;
         return null;
-    } catch (error) {
-        console.error("generateDescription error: ", error);
+    } catch (err) {
+        const error = err as AxiosError<any>;
+        console.error(
+            "generateDescription error:",
+            error.response?.status,
+            error.response?.data || error.message,
+        );
         return null;
     }
 };
@@ -31,14 +37,20 @@ export const recommendPet = async (
     preferences: string,
 ): Promise<RecommendPet | null> => {
     try {
-        const { data } = await axios.post(AI_URL + "/recommend-pet", {
+        const baseUrl = AI_URL.replace(/\/+$/, "");
+        const { data } = await axios.post(`${baseUrl}/recommend-pet`, {
             preferences,
         });
 
         if (data) return data;
         return null;
-    } catch (error) {
-        console.error("recommendPet error: ", error);
+    } catch (err) {
+        const error = err as AxiosError<any>;
+        console.error(
+            "recommendPet error:",
+            error.response?.status,
+            error.response?.data || error.message,
+        );
 
         return null;
     }

@@ -1,5 +1,15 @@
 [
   {
+    "ContainingType": "PetStoreAPI.Controllers.AuthController",
+    "Method": "CreateFirebaseCustomToken",
+    "RelativePath": "api/auth/firebase/custom-token",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "PetStoreAPI.Controllers.PostController",
     "Method": "AdoptPost",
     "RelativePath": "api/post/AdoptPost/{id}",

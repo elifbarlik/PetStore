@@ -63,6 +63,10 @@
               "target": "Package",
               "version": "[12.0.1, )"
             },
+            "FirebaseAdmin": {
+              "target": "Package",
+              "version": "[3.3.0, )"
+            },
             "Google.Cloud.Language.V1": {
               "target": "Package",
               "version": "[3.7.0, )"
@@ -87,7 +91,7 @@
               "target": "Package",
               "version": "[8.0.7, )"
             },
-            "Microsoft.EntityFrameworkCore.Sqlite": {
+            "Microsoft.EntityFrameworkCore.SqlServer": {
               "target": "Package",
               "version": "[8.0.7, )"
             },

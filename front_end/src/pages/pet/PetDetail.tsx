@@ -5,6 +5,7 @@ import { MapPin, Clock, User, CheckCircle, ArrowLeft } from "lucide-react";
 import { formatTime } from "../../utils";
 import Button from "../../components/button";
 import { useAuth } from "../../hooks/useAuth";
+import { createOrGetRoom } from "../../services/chatService";
 
 export default function PetDetail() {
     const { id } = useParams<{ id: string }>();
@@ -45,6 +46,13 @@ export default function PetDetail() {
         } finally {
             setAdopting(false);
         }
+    };
+
+    const handleMessage = async () => {
+        if (!post || !user) return;
+        if (post.user.id === user.id) return;
+        const roomId = await createOrGetRoom({ userA: user, userB: post.user, postId: post.postId });
+        navigate(`/chat/${roomId}`);
     };
 
     if (loading) {
@@ -163,6 +171,16 @@ export default function PetDetail() {
                                 classNames="flex-1 !py-3 disabled:bg-gray-400 disabled:!cursor-not-allowed"
                             >
                                 İlan Size Ait
+                            </Button>
+                        )}
+
+                        {post.user.id !== user?.id && (
+                            <Button
+                                onClick={handleMessage}
+                                disabled={!isAuth}
+                                classNames="flex-1 !py-3 !bg-blue-600 !text-white disabled:bg-gray-400 disabled:!cursor-not-allowed"
+                            >
+                                {isAuth ? "Mesaj Gönder" : "Mesaj için giriş yapın"}
                             </Button>
                         )}
                     </div>

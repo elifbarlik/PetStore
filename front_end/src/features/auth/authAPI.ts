@@ -1,6 +1,8 @@
 import axios, { AxiosError } from "axios";
 import type { User } from "./authSlice";
 import { API_URL } from "../../utils";
+import { auth } from "../../services/firebase";
+import { signInWithCustomToken } from "firebase/auth";
 
 interface LoginResponse {
     result: {
@@ -29,6 +31,21 @@ export const loginAPI = async (credentials: {
         const { data } = await axios.post<LoginResponse>(URL, credentials);
 
         if (data.isSuccess && data.result) {
+            // Exchange backend token for Firebase custom token to enable Firestore auth rules
+            try {
+                const { data: custom } = await axios.post<{ token: string }>(
+                    API_URL + "/auth/firebase/custom-token",
+                    {},
+                    { headers: { Authorization: `Bearer ${data.result.token}` } },
+                );
+                if (custom?.token) {
+                    await signInWithCustomToken(auth, custom.token);
+                }
+            } catch (e) {
+                // Non-fatal: Firestore may be open rules during dev
+                console.warn("Failed to sign in to Firebase with custom token", e);
+            }
+
             return {
                 token: data.result.token,
                 user: data.result.user,

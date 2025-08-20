@@ -1,14 +1,3 @@
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.deps.json
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.dll
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.pdb
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.AssemblyInfoInputs.cache
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.AssemblyInfo.cs
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.csproj.CoreCompileInputs.cache
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.dll
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\refint\PetStoreAPI_Utility.dll
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.pdb
-C:\Users\elifb\Desktop\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\ref\PetStoreAPI_Utility.dll
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.deps.json
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.dll
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\bin\Debug\net8.0\PetStoreAPI_Utility.pdb
@@ -16,6 +5,7 @@ C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Deb
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.AssemblyInfoInputs.cache
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.AssemblyInfo.cs
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.csproj.CoreCompileInputs.cache
+C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.sourcelink.json
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.dll
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\refint\PetStoreAPI_Utility.dll
 C:\Users\elifb\Desktop\PetStore\back_end\PetStoreAPI\PetStoreAPI_Utility\obj\Debug\net8.0\PetStoreAPI_Utility.pdb
