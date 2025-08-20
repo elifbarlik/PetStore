@@ -1,5 +1,7 @@
-export const API_URL = import.meta.env.VITE_API_URL;
-export const AI_URL = import.meta.env.VITE_AI_API_URL;
+export const API_URL =
+    import.meta.env.VITE_API_URL || "http://localhost:5294/api";
+export const AI_URL =
+    import.meta.env.VITE_AI_API_URL || "http://localhost:5000";
 
 export const formatTime = (dateString: string) => {
     const date = new Date(dateString);

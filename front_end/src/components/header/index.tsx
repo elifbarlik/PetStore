@@ -36,6 +36,13 @@ export default function Header() {
                         <div className="flex items-center gap-2">
                             <Button
                                 isLink
+                                href="/chat"
+                                classNames="!flex items-center gap-2 !py-2 !px-4 !bg-blue-600 !text-white hover:!bg-blue-700"
+                            >
+                                Mesajlar
+                            </Button>
+                            <Button
+                                isLink
                                 href="/profile"
                                 classNames="!flex items-center gap-2 !py-2 !px-4 !bg-gray-100 !text-gray-700 hover:!bg-gray-200"
                             >
@@ -107,6 +114,13 @@ export default function Header() {
                         <div className="space-y-3 pt-4 border-t border-gray-100">
                             {isAuth ? (
                                 <>
+                                    <Button
+                                        isLink
+                                        href="/chat"
+                                        classNames="!w-full !flex items-center justify-center gap-3 !py-3 !bg-blue-600 !text-white hover:!bg-blue-700"
+                                    >
+                                        Mesajlar
+                                    </Button>
                                     <Button
                                         isLink
                                         href="/profile"

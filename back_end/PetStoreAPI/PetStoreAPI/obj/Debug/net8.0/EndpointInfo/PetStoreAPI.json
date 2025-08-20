@@ -5,6 +5,18 @@
     "version": "1.0"
   },
   "paths": {
+    "/api/auth/firebase/custom-token": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
     "/api/post/GetAllPosts": {
       "get": {
         "tags": [

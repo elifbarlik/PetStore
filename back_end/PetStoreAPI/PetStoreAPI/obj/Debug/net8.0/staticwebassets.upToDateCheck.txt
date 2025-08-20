@@ -1,1 +1,2 @@
+wwwroot\firebase-config.js
 wwwroot\PostImages\1.jpg

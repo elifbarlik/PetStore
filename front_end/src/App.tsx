@@ -9,6 +9,8 @@ import ProfileLayout from "./pages/profile/ProfileLayout";
 import Profile from "./pages/profile/profile";
 import ProtectedRoute from "./components/ProtectedRoot";
 import PetDetail from "./pages/pet/PetDetail";
+import ChatList from "./pages/chat/ChatList";
+import ChatRoom from "./pages/chat/ChatRoom";
 
 function App() {
     return (
@@ -21,6 +23,17 @@ function App() {
 
                 <Route path="auth/login" element={<Login />} />
                 <Route path="auth/register" element={<Register />} />
+                <Route
+                    path="/chat"
+                    element={
+                        <ProtectedRoute>
+                            <ProfileLayout />
+                        </ProtectedRoute>
+                    }
+                >
+                    <Route index element={<ChatList />} />
+                    <Route path=":id" element={<ChatRoom />} />
+                </Route>
 
                 <Route
                     path="/profile"

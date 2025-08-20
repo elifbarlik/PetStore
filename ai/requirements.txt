@@ -1,4 +1,10 @@
-Flask
-Flask-CORS
-python-dotenv
-google-generativeai
+Flask==3.1.1
+Flask-CORS==6.0.1
+python-dotenv==1.0.1
+google-generativeai==0.8.5
+# Pin protobuf to avoid resolver conflicts with google-generativeai
+protobuf==5.27.3
+# Ensure typing extensions for Python versions as needed
+typing-extensions>=4.9.0
+# Explicit pin to ensure wheels exist for common Python versions
+pydantic>=2.6,<3.0

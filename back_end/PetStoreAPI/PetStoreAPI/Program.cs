@@ -11,11 +11,13 @@ using PetStoreAPI.Models;
 using PetStoreAPI.Service;
 using PetStoreAPI.Service.IService;
 using PetStoreAPI.Configurations;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog'u Seq ile yapýlandýr
+// Serilog'u Seq ile yapï¿½landï¿½r
 builder.Host.UseSerilog((hostingContext, loggerConfiguration) =>
 {
     loggerConfiguration
@@ -24,9 +26,9 @@ builder.Host.UseSerilog((hostingContext, loggerConfiguration) =>
         .WriteTo.Seq("http://localhost:5341"); // Seq sunucusunun URL'si
 });
 
-// Diðer servis kayýtlarý
+// Diï¿½er servis kayï¿½tlarï¿½
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 IMapper mapper = MappingConfig.RegisterMaps().CreateMapper();
 builder.Services.AddSingleton(mapper);
 
@@ -77,10 +79,68 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin()
                .AllowAnyMethod()
                .AllowAnyHeader();
-        // NOT: AllowCredentials() kullanmayýn AllowAnyOrigin() ile birlikte
+        // NOT: AllowCredentials() kullanmayï¿½n AllowAnyOrigin() ile birlikte
     });
 });
 var app = builder.Build();
+
+// Initialize Firebase Admin SDK if not already initialized
+var firebaseCredentialsPath = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIALS_JSON");
+var googleApplicationCredentialsPath = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
+var configuredCredentialsPath = app.Configuration["Firebase:CredentialsPath"];
+
+if (FirebaseApp.DefaultInstance == null)
+{
+    string? resolvedPath = null;
+
+    // Build candidate list in priority order
+    var candidates = new List<string?>
+    {
+        firebaseCredentialsPath,
+        googleApplicationCredentialsPath,
+        // If configured path is relative, make it relative to content root
+        !string.IsNullOrWhiteSpace(configuredCredentialsPath)
+            ? (Path.IsPathRooted(configuredCredentialsPath)
+                ? configuredCredentialsPath
+                : Path.Combine(app.Environment.ContentRootPath, configuredCredentialsPath))
+            : null,
+        // Fallback to file in content root (if copied to output)
+        Path.Combine(app.Environment.ContentRootPath, "firebase-service-account.json"),
+        // Fallback to build output directory where content files are copied
+        Path.Combine(AppContext.BaseDirectory, "firebase-service-account.json"),
+        // Fallback to repo root (one level up during dev)
+        Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "..", "firebase-service-account.json"))
+    };
+
+    foreach (var candidate in candidates)
+    {
+        if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
+        {
+            resolvedPath = candidate;
+            break;
+        }
+    }
+
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(resolvedPath))
+        {
+            FirebaseApp.Create(new AppOptions
+            {
+                Credential = GoogleCredential.FromFile(resolvedPath)
+            });
+            app.Logger.LogInformation("Firebase Admin initialized using credentials file at {Path}", resolvedPath);
+        }
+        else
+        {
+            app.Logger.LogError("Firebase credentials not found. Provide a valid credentials file via FIREBASE_CREDENTIALS_JSON/GOOGLE_APPLICATION_CREDENTIALS env vars, place 'firebase-service-account.json' in the content root, or set 'Firebase:CredentialsPath' in appsettings.");
+        }
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to initialize Firebase Admin SDK. Check credentials file and path.");
+    }
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
