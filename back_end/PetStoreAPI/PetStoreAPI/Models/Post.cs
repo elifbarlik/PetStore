@@ -9,7 +9,7 @@ namespace PetStoreAPI.Models
         [Key]
         public int PostId { get; set; }
 
-        public string UserId { get; set; }
+        public string UserId { get; set; } = string.Empty;
 
         [ForeignKey("UserId")]
         [ValidateNever]

@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { loginAPI, registerAPI } from "./authAPI";
+import { isTokenExpired } from "../../utils/jwt";
 
 export interface User {
     id: string;
@@ -16,12 +17,28 @@ interface AuthState {
     error: string | null;
 }
 
-const token = localStorage.getItem("token");
-const _user = localStorage.getItem("user");
-let user = null;
-if (_user) {
-    user = JSON.parse(_user);
-}
+const clearStoredSession = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+};
+
+// Restore the session only if the stored token is still valid and the user is readable.
+const loadSession = (): { token: string | null; user: User | null } => {
+    const storedToken = localStorage.getItem("token");
+    const storedUser = localStorage.getItem("user");
+    if (!storedToken || !storedUser || isTokenExpired(storedToken)) {
+        clearStoredSession();
+        return { token: null, user: null };
+    }
+    try {
+        return { token: storedToken, user: JSON.parse(storedUser) as User };
+    } catch {
+        clearStoredSession();
+        return { token: null, user: null };
+    }
+};
+
+const { token, user } = loadSession();
 
 const initialState: AuthState = {
     user: user || null,
@@ -72,8 +89,9 @@ const authSlice = createSlice({
     initialState,
     reducers: {
         logout: (state) => {
-            localStorage.removeItem("token");
+            clearStoredSession();
             state.error = null;
+            state.status = "idle";
             state.user = null;
             state.token = null;
         },
@@ -92,8 +110,8 @@ const authSlice = createSlice({
             state.status = "succeeded";
         });
 
-        builder.addCase(register.fulfilled, (state, action) => {
-            state.user = action.payload.user;
+        // Registration does not log the user in (no token), so the session is left untouched.
+        builder.addCase(register.fulfilled, (state) => {
             state.error = null;
             state.status = "succeeded";
         });

@@ -33,6 +33,25 @@ export interface ChatMessage {
 	createdAt: number;
 }
 
+/** Shape of the Firestore documents (only the fields read back). */
+interface MessageDoc {
+	roomId: string;
+	senderId: string;
+	text: string;
+	createdAt?: { toMillis?: () => number } | null;
+	createdAtMillis?: number;
+}
+
+interface RoomDoc {
+	participantIds: [string, string];
+	participants: ChatRoom["participants"];
+	postId?: number | null;
+	lastMessage?: string;
+	updatedAt?: number;
+}
+
+const POLL_INTERVAL_MS = 2000;
+
 const roomsCol = collection(db, "rooms");
 
 export const createOrGetRoom = async (opts: {
@@ -97,8 +116,8 @@ export const listenRoomMessages = (
 	roomId: string,
 	onChange: (messages: ChatMessage[]) => void,
 ) => {
-	const start = async () => { await ensureFirebaseAuth(); await authReady; };
-	start();
+	// Wait for Firebase auth before the first read (avoids permission-denied on load)
+	const ready = ensureFirebaseAuth().then(() => authReady).catch(() => undefined);
 	const q = query(
 		collection(db, `rooms/${roomId}/messages`),
 		orderBy("createdAtMillis", "asc"),
@@ -106,38 +125,39 @@ export const listenRoomMessages = (
 	);
 
 	let pollTimer: number | null = null;
+	let stopped = false;
 
-	const startPolling = () => {
-		if (pollTimer != null) return;
-		const doPoll = async () => {
+	// Sequential polling: the next poll is scheduled only after the previous one finished,
+	// so slow responses never pile up; hidden tabs skip the network call.
+	const doPoll = async () => {
+		await ready;
+		if (!document.hidden) {
 			try {
 				const snap = await getDocs(q);
 				const items: ChatMessage[] = [];
 				snap.forEach((d) => {
-					const data = d.data() as any;
+					const data = d.data() as MessageDoc;
 					items.push({
 						id: d.id,
 						roomId: data.roomId,
 						senderId: data.senderId,
 						text: data.text,
-						createdAt: data.createdAt?.toMillis?.() ?? Date.now(),
+						createdAt: data.createdAt?.toMillis?.() ?? data.createdAtMillis ?? Date.now(),
 					});
 				});
-				onChange(items);
+				if (!stopped) onChange(items);
 			} catch (e) {
 				console.error("Polling messages failed:", e);
 			}
-		};
-		// Initial fetch fast, then steady interval
-		doPoll();
-		pollTimer = window.setInterval(doPoll, 2000);
+		}
+		if (!stopped) pollTimer = window.setTimeout(doPoll, POLL_INTERVAL_MS);
 	};
 
-	// Pure polling (no realtime Listen)
-	startPolling();
+	doPoll();
 	return () => {
+		stopped = true;
 		if (pollTimer != null) {
-			window.clearInterval(pollTimer);
+			window.clearTimeout(pollTimer);
 			pollTimer = null;
 		}
 	};
@@ -150,11 +170,11 @@ export const listUserRooms = async (userId: string): Promise<ChatRoom[]> => {
 	const snap = await getDocs(q);
 	const rooms: ChatRoom[] = [];
 	snap.forEach((d) => {
-		const data = d.data() as any;
+		const data = d.data() as RoomDoc;
 		rooms.push({
 			id: d.id,
-			participantIds: data.participantIds as [string, string],
-			participants: data.participants as ChatRoom["participants"],
+			participantIds: data.participantIds,
+			participants: data.participants,
 			postId: data.postId ?? undefined,
 			lastMessage: data.lastMessage ?? "",
 			updatedAt: data.updatedAt ?? Date.now(),

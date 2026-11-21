@@ -1,0 +1,20 @@
+{
+  "name": "petstore-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "End-to-end UI and REST API test suite for PetStore (Playwright)",
+  "scripts": {
+    "db:setup": "node scripts/db-setup.mjs",
+    "test": "playwright test",
+    "test:api": "playwright test --project=api",
+    "test:ui": "playwright test --project=ui",
+    "test:headed": "playwright test --project=ui --headed",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^22.0.0",
+    "typescript": "~5.8.3"
+  }
+}

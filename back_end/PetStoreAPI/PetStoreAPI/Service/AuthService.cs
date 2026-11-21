@@ -1,147 +1,118 @@
-﻿using PetStoreAPI.Data;
-using PetStoreAPI.Models.Dto;
+﻿using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using PetStoreAPI.Models;
+using PetStoreAPI.Models.Dto;
 using PetStoreAPI.Service.IService;
-using Microsoft.AspNetCore.Identity;
 
 namespace PetStoreAPI.Service
 {
     public class AuthService : IAuthService
     {
-        private readonly AppDbContext _db;
+        public const string InvalidCredentialsMessage = "Kullanıcı adı veya şifre yanlış.";
+        public const string LockedOutMessage = "Çok fazla hatalı giriş denemesi. Hesabınız geçici olarak kilitlendi, lütfen daha sonra tekrar deneyin.";
+
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly RoleManager<IdentityRole> _roleManager;
         private readonly IJwtTokenGenerator _jwtTokenGenerator;
-        public AuthService(AppDbContext db, UserManager<ApplicationUser> userManager, RoleManager<IdentityRole> roleManager, IJwtTokenGenerator jwtTokenGenerator)
+        private readonly ILogger<AuthService> _logger;
+
+        public AuthService(UserManager<ApplicationUser> userManager, IJwtTokenGenerator jwtTokenGenerator, ILogger<AuthService> logger)
         {
-            _db = db;
             _userManager = userManager;
-            _roleManager = roleManager;
             _jwtTokenGenerator = jwtTokenGenerator;
+            _logger = logger;
         }
 
-        public async Task<bool> AssignRole(string email, string roleName)
+        public async Task<(LoginResponseDto? Response, string? Error)> Login(LoginRequestDto loginRequestDTO)
         {
-            var user = _db.ApplicationUsers.FirstOrDefault(u => u.Email.ToLower() == email.ToLower());
-            if (user != null)
+            // FindByNameAsync uses the indexed NormalizedUserName column (case-insensitive)
+            var user = await _userManager.FindByNameAsync(loginRequestDTO.UserName);
+
+            // Same message for unknown user and wrong password: no account enumeration
+            if (user == null)
+                return (null, InvalidCredentialsMessage);
+
+            if (await _userManager.IsLockedOutAsync(user))
             {
-                if (!_roleManager.RoleExistsAsync(roleName).GetAwaiter().GetResult())
+                _logger.LogWarning("Kilitli hesaba giriş denemesi. UserId: {UserId}", user.Id);
+                return (null, LockedOutMessage);
+            }
+
+            if (!await _userManager.CheckPasswordAsync(user, loginRequestDTO.Password))
+            {
+                // Brute-force protection: Identity locks the account after MaxFailedAccessAttempts
+                await _userManager.AccessFailedAsync(user);
+                if (await _userManager.IsLockedOutAsync(user))
                 {
-                    _roleManager.CreateAsync(new IdentityRole(roleName)).GetAwaiter().GetResult();
+                    _logger.LogWarning("Hesap kilitlendi. UserId: {UserId}", user.Id);
+                    return (null, LockedOutMessage);
                 }
-                await _userManager.AddToRoleAsync(user, roleName);
-                return true;
+                return (null, InvalidCredentialsMessage);
             }
-            return false;
-        }
 
-        public async Task<LoginResponseDto> Login(LoginRequestDto loginRequestDTO)
-        {
-
-            var user = _db.ApplicationUsers.FirstOrDefault(u => u.UserName.ToLower() == loginRequestDTO.UserName.ToLower());
-            bool isValid = await _userManager.CheckPasswordAsync(user, loginRequestDTO.Password);
-            if (user == null || isValid == false)
-            {
-                return new LoginResponseDto() { User = null, Token = "" };
-            }
-            _db.ApplicationUsers.Update(user);
-            await _db.SaveChangesAsync();
-
+            if (await _userManager.GetAccessFailedCountAsync(user) > 0)
+                await _userManager.ResetAccessFailedCountAsync(user);
 
             var roles = await _userManager.GetRolesAsync(user);
-
             var token = _jwtTokenGenerator.GenerateToken(user, roles);
 
-            UserDto userDto = new()
+            return (new LoginResponseDto
             {
-                Email = user.Email,
-                Id = user.Id,
-                Name = user.Name
-            };
-
-            LoginResponseDto loginResponseDto = new LoginResponseDto()
-            {
-                User = userDto,
+                User = new UserDto
+                {
+                    Id = user.Id,
+                    Email = user.Email!,
+                    Name = user.Name,
+                    Surname = user.Surname,
+                    UserName = user.UserName,
+                },
                 Token = token,
-            };
-            return loginResponseDto;
+            }, null);
         }
 
         public async Task<RegistrationResponseDto> Register(RegistrationRequestDto registrationRequestDTO)
         {
             try
             {
-                // Username kontrolü
-                var isExistUsername = _db.ApplicationUsers.FirstOrDefault(u => u.UserName == registrationRequestDTO.UserName);
-                if (isExistUsername != null)
-                {
-                    return new RegistrationResponseDto
-                    {
-                        IsSuccessful = false,
-                        ErrorMessage = "Username already taken"
-                    };
-                }
+                if (await _userManager.FindByNameAsync(registrationRequestDTO.UserName!) != null)
+                    return Fail("Username already taken");
 
-                // Email kontrolü
-                var isExistEmail = _db.ApplicationUsers.FirstOrDefault(u => u.Email == registrationRequestDTO.Email);
-                if (isExistEmail != null)
-                {
-                    return new RegistrationResponseDto
-                    {
-                        IsSuccessful = false,
-                        ErrorMessage = "Email already taken"
-                    };
-                }
+                if (await _userManager.FindByEmailAsync(registrationRequestDTO.Email!) != null)
+                    return Fail("Email already taken");
 
                 ApplicationUser user = new()
                 {
                     UserName = registrationRequestDTO.UserName,
-                    Surname = registrationRequestDTO.Surname,
                     Email = registrationRequestDTO.Email,
-                    NormalizedEmail = registrationRequestDTO.Email.ToUpper(),
-                    Name = registrationRequestDTO.Name
+                    Name = registrationRequestDTO.Name!,
+                    Surname = registrationRequestDTO.Surname!,
                 };
 
-                var result = await _userManager.CreateAsync(user, registrationRequestDTO.Password);
-                if (result.Succeeded)
-                {
-                    // Kullanıcı başarıyla oluşturuldu - fresh data için tekrar çek
-                    var createdUser = await _userManager.FindByNameAsync(registrationRequestDTO.UserName);
+                // UserManager hashes the password and fills the normalized name/email columns
+                var result = await _userManager.CreateAsync(user, registrationRequestDTO.Password!);
+                if (!result.Succeeded)
+                    return Fail(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-                    UserDto userDto = new()
-                    {
-                        Id = createdUser.Id,
-                        Email = createdUser.Email,
-                        Name = createdUser.Name,
-                        Surname = createdUser.Surname,
-                        UserName = createdUser.UserName
-                    };
-
-                    return new RegistrationResponseDto
-                    {
-                        IsSuccessful = true,
-                        User = userDto
-                    };
-                }
-                else
+                return new RegistrationResponseDto
                 {
-                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                    return new RegistrationResponseDto
+                    IsSuccessful = true,
+                    User = new UserDto
                     {
-                        IsSuccessful = false,
-                        ErrorMessage = errors
-                    };
-                }
+                        Id = user.Id,
+                        Email = user.Email!,
+                        Name = user.Name,
+                        Surname = user.Surname,
+                        UserName = user.UserName,
+                    },
+                };
             }
             catch (Exception ex)
             {
-                // Log the exception
-                return new RegistrationResponseDto
-                {
-                    IsSuccessful = false,
-                    ErrorMessage = "Registration failed due to an unexpected error"
-                };
+                _logger.LogError(ex, "Kayıt sırasında beklenmeyen hata. UserName: {UserName}", registrationRequestDTO.UserName);
+                return Fail("Registration failed due to an unexpected error");
             }
         }
+
+        private static RegistrationResponseDto Fail(string message) =>
+            new() { IsSuccessful = false, ErrorMessage = message };
     }
 }

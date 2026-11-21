@@ -1,17 +1,22 @@
-import { Edit, Trash2, MapPin, Clock, CheckCircle } from "lucide-react";
+import { Edit, Trash2, MapPin, Clock, CheckCircle, Undo2 } from "lucide-react";
 import type { Post } from "../../services/petService";
 import { formatTime } from "../../utils";
 
 interface UserPostCardProps {
     post: Post;
+    /** True while a delete/cancel request for this post is in flight. */
+    busy?: boolean;
     onEdit: (post: Post) => void;
     onDelete: (postId: number) => void;
+    onCancelAdoption: (postId: number) => void;
 }
 
 export default function UserPostCard({
     post,
+    busy = false,
     onEdit,
     onDelete,
+    onCancelAdoption,
 }: UserPostCardProps) {
     return (
         <div className="bg-white self-stretch rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-100 group max-w-[350px] flex flex-col justify-between">
@@ -57,7 +62,7 @@ export default function UserPostCard({
                             <span>{formatTime(post.postTime)}</span>
                         </div>
 
-                        {post.postLatitude && post.postLongitude && (
+                        {post.postLatitude != null && post.postLongitude != null && (
                             <div className="flex items-center gap-1">
                                 <MapPin size={16} />
                                 <span>Konum mevcut</span>
@@ -69,18 +74,35 @@ export default function UserPostCard({
                 <div className="flex gap-3 pt-3">
                     <button
                         onClick={() => onEdit(post)}
-                        className="flex-1 bg-primary text-white py-2.5 px-4 rounded-xl font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                        disabled={busy}
+                        className="flex-1 bg-primary text-white py-2.5 px-4 rounded-xl font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
                     >
                         <Edit size={18} />
                         Düzenle
                     </button>
 
-                    <button
-                        onClick={() => onDelete(post.postId)}
-                        className="p-2.5 border border-red-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-300 transition-colors"
-                    >
-                        <Trash2 size={20} />
-                    </button>
+                    {post.isAdopted ? (
+                        // An adopted post cannot be deleted; the owner can undo the adoption first.
+                        <button
+                            onClick={() => onCancelAdoption(post.postId)}
+                            disabled={busy}
+                            aria-label="Sahiplenmeyi iptal et"
+                            title="Sahiplenmeyi iptal et"
+                            className="p-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 hover:border-amber-300 transition-colors disabled:opacity-50"
+                        >
+                            <Undo2 size={20} />
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => onDelete(post.postId)}
+                            disabled={busy}
+                            aria-label="İlanı sil"
+                            title="İlanı sil"
+                            className="p-2.5 border border-red-200 text-red-500 rounded-xl hover:bg-red-50 hover:border-red-300 transition-colors disabled:opacity-50"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

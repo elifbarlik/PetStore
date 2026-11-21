@@ -1,6 +1,3 @@
-
-using AutoMapper;
-using MailKit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -10,33 +7,62 @@ using PetStoreAPI.Extensions;
 using PetStoreAPI.Models;
 using PetStoreAPI.Service;
 using PetStoreAPI.Service.IService;
-using PetStoreAPI.Configurations;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Serilog'u Seq ile yap�land�r
+// Serilog: console + Seq (URL configurable via "Seq:ServerUrl")
 builder.Host.UseSerilog((hostingContext, loggerConfiguration) =>
 {
     loggerConfiguration
-        .ReadFrom.Configuration(hostingContext.Configuration) // appsettings.json'dan okur
+        .ReadFrom.Configuration(hostingContext.Configuration)
+        .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
         .Enrich.FromLogContext()
-        .WriteTo.Seq("http://localhost:5341"); // Seq sunucusunun URL'si
+        .WriteTo.Console()
+        .WriteTo.Seq(hostingContext.Configuration["Seq:ServerUrl"] ?? "http://localhost:5341");
 });
 
-// Di�er servis kay�tlar�
+// Diğer servis kayıtları
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-IMapper mapper = MappingConfig.RegisterMaps().CreateMapper();
-builder.Services.AddSingleton(mapper);
 
-builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("ApiSettings:JwtOptions"));
-// Add services to the container.
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>().AddEntityFrameworkStores<AppDbContext>().AddDefaultTokenProviders();
-builder.Services.AddControllers();
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+    {
+        options.User.RequireUniqueEmail = true;
+        // Brute-force protection for /api/user/Login
+        options.Lockout.AllowedForNewUsers = true;
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Validation errors use the same ResponseDto envelope as every other response,
+        // with a readable message and the per-field errors in "result".
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(e => e.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    e => e.Key,
+                    e => e.Value!.Errors.Select(x => string.IsNullOrEmpty(x.ErrorMessage) ? "Geçersiz değer." : x.ErrorMessage).ToArray());
+
+            return new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new PetStoreAPI.Models.Dto.ResponseDto
+            {
+                IsSuccess = false,
+                StatusCode = System.Net.HttpStatusCode.BadRequest,
+                Message = string.Join(" ", errors.SelectMany(e => e.Value).Distinct()),
+                Result = errors,
+            });
+        };
+    });
 
 
 builder.Services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -70,7 +96,6 @@ builder.Services.AddSwaggerGen(option =>
 });
 builder.AddAppAuthetication();
 builder.Services.AddAuthorization();
-builder.Services.AddSwaggerGen();
 
 builder.Services.AddCors(options =>
 {
@@ -79,7 +104,7 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin()
                .AllowAnyMethod()
                .AllowAnyHeader();
-        // NOT: AllowCredentials() kullanmay�n AllowAnyOrigin() ile birlikte
+        // NOT: AllowCredentials() AllowAnyOrigin() ile birlikte kullanılamaz
     });
 });
 var app = builder.Build();
@@ -133,7 +158,7 @@ if (FirebaseApp.DefaultInstance == null)
         }
         else
         {
-            app.Logger.LogError("Firebase credentials not found. Provide a valid credentials file via FIREBASE_CREDENTIALS_JSON/GOOGLE_APPLICATION_CREDENTIALS env vars, place 'firebase-service-account.json' in the content root, or set 'Firebase:CredentialsPath' in appsettings.");
+            app.Logger.LogWarning("Firebase credentials not found (chat features disabled). Provide a valid credentials file via FIREBASE_CREDENTIALS_JSON/GOOGLE_APPLICATION_CREDENTIALS env vars, place 'firebase-service-account.json' in the content root, or set 'Firebase:CredentialsPath' in appsettings.");
         }
     }
     catch (Exception ex)
@@ -142,10 +167,26 @@ if (FirebaseApp.DefaultInstance == null)
     }
 }
 
+// Unhandled exceptions: log once and return the standard envelope (no stack trace leak)
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var feature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+    app.Logger.LogError(feature?.Error, "Beklenmeyen hata: {Path}", context.Request.Path);
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(new PetStoreAPI.Models.Dto.ResponseDto
+    {
+        IsSuccess = false,
+        StatusCode = System.Net.HttpStatusCode.InternalServerError,
+        Message = "Beklenmeyen bir hata oluştu. Lütfen daha sonra tekrar deneyin.",
+    });
+}));
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// Redirect to HTTPS only when an HTTPS endpoint is actually configured
+if ((app.Configuration["urls"] ?? string.Empty).Contains("https://", StringComparison.OrdinalIgnoreCase))
+    app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseRouting();
 app.UseAuthentication();

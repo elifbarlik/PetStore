@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 import PostBox from "../components/pet/PostBox";
 import { getAllPosts, type Post } from "../services/petService";
 import { Search } from "lucide-react";
@@ -10,36 +10,30 @@ export default function PetList() {
     const [searchTerm, setSearchTerm] = useState("");
     const [showOnlyUnadopted, setShowOnlyUnadopted] = useState(false);
 
-    const navigate = useNavigate();
-
     useEffect(() => {
-        fetchPosts();
+        let cancelled = false;
+        getAllPosts().then((data) => {
+            if (cancelled) return;
+            setPosts(data);
+            setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    const fetchPosts = async () => {
-        try {
-            const data = await getAllPosts();
-            setPosts(data);
-        } catch (error) {
-            console.error("İlanlar yüklenirken hata oluştu:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handlePostClick = (postId: number) => {
-        navigate(`/ilan/${postId}`);
-    };
+    // Turkish-aware, null-safe normalisation ("İstanbul" matches "istanbul", "Işık" matches "ışık")
+    const normalize = (value: string | null | undefined) =>
+        (value ?? "").toLocaleLowerCase("tr-TR").trim();
+    const term = normalize(searchTerm);
 
     const filteredPosts = posts
         ?.filter(
             (post) =>
-                post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                post.petName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                post.petType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                post.description
-                    .toLowerCase()
-                    .includes(searchTerm.toLowerCase()),
+                term === "" ||
+                [post.title, post.petName, post.petType, post.description].some((field) =>
+                    normalize(field).includes(term),
+                ),
         )
         .filter((post) => !showOnlyUnadopted || !post.isAdopted);
 
@@ -108,13 +102,13 @@ export default function PetList() {
             ) : (
                 <div className="grid grid-cols-1 grid-flow-row-dense sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {filteredPosts?.map((post) => (
-                        <div
+                        <Link
                             key={post.postId}
-                            onClick={() => handlePostClick(post.postId)}
-                            className="w-full"
+                            to={`/ilan/${post.postId}`}
+                            className="block w-full rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
                             <PostBox post={post} />
-                        </div>
+                        </Link>
                     ))}
                 </div>
             )}

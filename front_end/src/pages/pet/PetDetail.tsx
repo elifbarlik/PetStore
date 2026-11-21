@@ -6,6 +6,7 @@ import { formatTime } from "../../utils";
 import Button from "../../components/button";
 import { useAuth } from "../../hooks/useAuth";
 import { createOrGetRoom } from "../../services/chatService";
+import { toast } from "react-toastify";
 
 export default function PetDetail() {
     const { id } = useParams<{ id: string }>();
@@ -14,45 +15,63 @@ export default function PetDetail() {
     const [post, setPost] = useState<Post | null>(null);
     const [loading, setLoading] = useState(true);
     const [adopting, setAdopting] = useState(false);
+    const [openingChat, setOpeningChat] = useState(false);
+
+    // Only a positive integer is a valid id ("12abc" or "-1" is treated as not found)
+    const postId = id && /^\d+$/.test(id) ? Number(id) : null;
 
     useEffect(() => {
-        if (id) {
-            fetchPost(parseInt(id));
-        }
-    }, [id]);
-
-    const fetchPost = async (postId: number) => {
-        try {
-            const data = await getPostById(postId);
-            setPost(data);
-        } catch (error) {
-            console.error("İlan detayları yüklenirken hata oluştu:", error);
-        } finally {
+        let cancelled = false;
+        setLoading(true);
+        if (postId === null) {
+            setPost(null);
             setLoading(false);
+            return;
         }
+        getPostById(postId).then((data) => {
+            if (cancelled) return;
+            setPost(data);
+            setLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [postId]);
+
+    // "Geri Dön" must not leave the site when the page was opened directly
+    const goBack = () => {
+        const historyIndex = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+        if (historyIndex > 0) navigate(-1);
+        else navigate("/ilanlar");
     };
 
     const handleAdopt = async () => {
-        if (!post || !id) return;
+        if (!post || !token || adopting) return;
 
-        try {
-            setAdopting(true);
-            const success = await adoptPet(parseInt(id), token as string);
-            if (success) {
-                await fetchPost(parseInt(id));
-            }
-        } catch (error) {
-            console.error("Sahiplenme işlemi sırasında hata oluştu:", error);
-        } finally {
-            setAdopting(false);
+        setAdopting(true);
+        const result = await adoptPet(post.postId, token);
+        if (result.success) {
+            toast.success(result.message);
+            const fresh = await getPostById(post.postId);
+            if (fresh) setPost(fresh);
+        } else {
+            toast.error(result.message);
         }
+        setAdopting(false);
     };
 
     const handleMessage = async () => {
-        if (!post || !user) return;
-        if (post.user.id === user.id) return;
-        const roomId = await createOrGetRoom({ userA: user, userB: post.user, postId: post.postId });
-        navigate(`/chat/${roomId}`);
+        if (!post || !user || !post.user || post.user.id === user.id || openingChat) return;
+        setOpeningChat(true);
+        try {
+            const roomId = await createOrGetRoom({ userA: user, userB: post.user, postId: post.postId });
+            navigate(`/chat/${roomId}`);
+        } catch (error) {
+            console.error("createOrGetRoom error:", error);
+            toast.error("Sohbet başlatılamadı. Lütfen daha sonra tekrar deneyin.");
+        } finally {
+            setOpeningChat(false);
+        }
     };
 
     if (loading) {
@@ -73,7 +92,7 @@ export default function PetDetail() {
             <div className="containerx py-12">
                 <div className="text-center">
                     <p className="text-gray-500 text-lg">İlan bulunamadı</p>
-                    <Button onClick={() => navigate(-1)} classNames="mt-4">
+                    <Button onClick={goBack} classNames="mt-4 !inline-flex items-center gap-2">
                         <ArrowLeft size={20} />
                         Geri Dön
                     </Button>
@@ -82,10 +101,12 @@ export default function PetDetail() {
         );
     }
 
+    const isOwner = Boolean(user) && (post.user?.id ?? post.userId) === user?.id;
+
     return (
         <div className="containerx py-12 min-h-screen">
             <button
-                onClick={() => navigate(-1)}
+                onClick={goBack}
                 className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors mb-8"
             >
                 <ArrowLeft size={20} />
@@ -130,7 +151,7 @@ export default function PetDetail() {
                         <div className="flex items-center gap-2 text-gray-600">
                             <User size={20} />
                             <span className="font-medium">
-                                {post.user.userName}
+                                {post.user?.userName}
                             </span>
                         </div>
 
@@ -140,7 +161,7 @@ export default function PetDetail() {
                                 <span>{formatTime(post.postTime)}</span>
                             </div>
 
-                            {post.postLatitude && post.postLongitude && (
+                            {post.postLatitude != null && post.postLongitude != null && (
                                 <div className="flex items-center gap-2 text-gray-600">
                                     <MapPin size={20} />
                                     <span>Konum mevcut</span>
@@ -150,38 +171,40 @@ export default function PetDetail() {
                     </div>
 
                     <div className="flex gap-4 pt-6">
-                        {!post.isAdopted && post.user.id !== user?.id && (
+                        {!isAuth ? (
+                            // Anonymous visitors are sent to the login page instead of a dead button
                             <Button
-                                onClick={handleAdopt}
-                                disabled={adopting || !isAuth}
-                                classNames="flex-1 !py-3 disabled:bg-gray-400 disabled:!cursor-not-allowed"
+                                onClick={() => navigate("/auth/login")}
+                                classNames="flex-1 !py-3"
                             >
-                                {adopting
-                                    ? "İşlem yapılıyor..."
-                                    : isAuth
-                                    ? "Sahiplen"
-                                    : "Sahiplenmek için giriş yapın"}
+                                {post.isAdopted ? "Mesaj için giriş yapın" : "Sahiplenmek için giriş yapın"}
                             </Button>
-                        )}
-
-                        {post.user.id === user?.id && (
+                        ) : isOwner ? (
                             <Button
-                                onClick={handleAdopt}
-                                disabled={true}
+                                disabled
                                 classNames="flex-1 !py-3 disabled:bg-gray-400 disabled:!cursor-not-allowed"
                             >
                                 İlan Size Ait
                             </Button>
-                        )}
-
-                        {post.user.id !== user?.id && (
-                            <Button
-                                onClick={handleMessage}
-                                disabled={!isAuth}
-                                classNames="flex-1 !py-3 !bg-blue-600 !text-white disabled:bg-gray-400 disabled:!cursor-not-allowed"
-                            >
-                                {isAuth ? "Mesaj Gönder" : "Mesaj için giriş yapın"}
-                            </Button>
+                        ) : (
+                            <>
+                                {!post.isAdopted && (
+                                    <Button
+                                        onClick={handleAdopt}
+                                        disabled={adopting}
+                                        classNames="flex-1 !py-3 disabled:bg-gray-400 disabled:!cursor-not-allowed"
+                                    >
+                                        {adopting ? "İşlem yapılıyor..." : "Sahiplen"}
+                                    </Button>
+                                )}
+                                <Button
+                                    onClick={handleMessage}
+                                    disabled={openingChat}
+                                    classNames="flex-1 !py-3 !bg-blue-600 !text-white disabled:bg-gray-400 disabled:!cursor-not-allowed"
+                                >
+                                    {openingChat ? "Sohbet açılıyor..." : "Mesaj Gönder"}
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>

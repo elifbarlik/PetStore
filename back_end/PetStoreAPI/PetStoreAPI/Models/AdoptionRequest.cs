@@ -9,7 +9,7 @@ namespace PetStoreAPI.Models
         public int RequestId { get; set; }
 
         // İsteği gönderen
-        public string UserId { get; set; }
+        public string UserId { get; set; } = string.Empty;
         public ApplicationUser? RequesterUser { get; set; }
 
         
@@ -19,9 +19,9 @@ namespace PetStoreAPI.Models
         [ForeignKey("PostId")]
         public Post? Post { get; set; }
 
-        public string Message { get; set; } // İstek mesajı
+        public string Message { get; set; } = string.Empty; // İstek mesajı
         public RequestStatus Status { get; set; } = RequestStatus.Pending;
-        public DateTime RequestDate { get; set; } = DateTime.Now;
+        public DateTime RequestDate { get; set; } = DateTime.UtcNow;
         public string? Response { get; set; } // Sahip yanıtı
         public bool? IsActive { get; set; } = true;
     }

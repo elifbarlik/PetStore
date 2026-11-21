@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDispatch } from "react-redux";
-import { logout } from "../../features/auth/authSlice";
+import { endSession } from "../../services/session";
 import { useAuth } from "../../hooks/useAuth";
 import Button from "../button";
 import Logo from "../logo";
@@ -18,7 +18,7 @@ export default function Header() {
     };
 
     const handleLogout = () => {
-        dispatch(logout());
+        endSession(dispatch);
         setIsMobileMenuOpen(false);
     };
 

@@ -4,9 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Lock, User, AlertCircle, Mail } from "lucide-react";
 import { useSelector, useDispatch } from "react-redux";
-import { register as registerDispatch } from "../../features/auth/authSlice";
+import { clearError, register as registerDispatch } from "../../features/auth/authSlice";
 import type { RootState, AppDispatch } from "../../store/store";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
 const passwordRegex =
@@ -34,9 +34,14 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 export default function Register() {
     const [showPassword, setShowPassword] = React.useState(false);
     const dispatch = useDispatch<AppDispatch>();
-    const { status, error } = useSelector((state: RootState) => state.auth);
+    const { status, error, token } = useSelector((state: RootState) => state.auth);
 
     const navigate = useNavigate();
+
+    // Errors are shared in the auth slice; start every visit with a clean form
+    React.useEffect(() => {
+        dispatch(clearError());
+    }, [dispatch]);
 
     const {
         register,
@@ -61,12 +66,15 @@ export default function Register() {
             navigate("/auth/login");
         } catch {
             setError("root", {
-                message: "Giriş işlemi başarısız oldu.",
+                message: "Kayıt işlemi başarısız oldu.",
             });
         }
     };
 
     const isLoading = status === "loading" || isSubmitting;
+
+    // Already logged in: the auth forms are not useful
+    if (token) return <Navigate to="/" replace />;
 
     return (
         <div className="min-h-screen flex justify-center pt-4 py-12 containerx">
@@ -316,10 +324,10 @@ export default function Register() {
                             {isLoading ? (
                                 <div className="flex items-center justify-center space-x-2">
                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    <span>Giriş yapılıyor...</span>
+                                    <span>Kayıt yapılıyor...</span>
                                 </div>
                             ) : (
-                                "Giriş Yap"
+                                "Kayıt Ol"
                             )}
                         </button>
                     </div>

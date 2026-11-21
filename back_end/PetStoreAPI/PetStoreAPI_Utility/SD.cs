@@ -8,7 +8,7 @@ namespace PetStoreAPI_Utility
 {
     public static class SD
     {
-        public static string PetStoreAPIBase { get; set; }
+        public static string PetStoreAPIBase { get; set; } = string.Empty;
         public enum ApiType
         {
             GET,

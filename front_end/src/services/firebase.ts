@@ -43,12 +43,12 @@ export const db = __dbId && __dbId !== "(default)" && __dbId !== "default"
 
 export const auth = getAuth(app);
 // Debug: brief one-time config log (non-sensitive)
-try {
+if (import.meta.env.DEV) {
     console.info("Firebase app initialized", {
         projectId: firebaseConfig.projectId,
         authDomain: firebaseConfig.authDomain,
     });
-} catch {}
+}
 
 // Ensure session persists across reloads
 setPersistence(auth, browserLocalPersistence).catch((err) => {

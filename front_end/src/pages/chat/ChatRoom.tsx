@@ -3,12 +3,14 @@ import { useParams } from "react-router";
 import { listenRoomMessages, sendMessage, type ChatMessage } from "../../services/chatService";
 import { useAuth } from "../../hooks/useAuth";
 import Button from "../../components/button";
+import { toast } from "react-toastify";
 
 export default function ChatRoom() {
 	const { id } = useParams<{ id: string }>();
 	const { user, isAuth } = useAuth();
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [text, setText] = useState("");
+	const [sending, setSending] = useState(false);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
@@ -29,10 +31,20 @@ export default function ChatRoom() {
 		);
 	}
 
-	const onSend = async () => {
-		if (!id || !user || !text.trim()) return;
-		await sendMessage(id, user.id, text.trim());
-		setText("");
+	const onSend = async (e: React.FormEvent) => {
+		e.preventDefault();
+		const message = text.trim();
+		if (!id || !user || !message || sending) return;
+		setSending(true);
+		try {
+			await sendMessage(id, user.id, message);
+			setText("");
+		} catch (error) {
+			console.error("sendMessage error:", error);
+			toast.error("Mesaj gönderilemedi. Lütfen tekrar deneyin.");
+		} finally {
+			setSending(false);
+		}
 	};
 
 	return (
@@ -43,22 +55,27 @@ export default function ChatRoom() {
 					{messages.map((m) => (
 						<div
 							key={m.id}
-							className={`max-w-[75%] px-3 py-2 rounded-lg ${m.senderId === user!.id ? "bg-primary text-white ml-auto" : "bg-gray-100 text-gray-800"}`}
+							className={`max-w-[75%] px-3 py-2 rounded-lg ${m.senderId === user?.id ? "bg-primary text-white ml-auto" : "bg-gray-100 text-gray-800"}`}
 						>
 							{m.text}
 						</div>
 					))}
 					<div ref={bottomRef} />
 				</div>
-				<div className="p-3 border-t flex gap-2">
+				{/* A form so Enter sends the message */}
+				<form onSubmit={onSend} className="p-3 border-t flex gap-2">
 					<input
 						value={text}
 						onChange={(e) => setText(e.target.value)}
 						placeholder="Mesaj yazın..."
+						aria-label="Mesaj"
+						maxLength={2000}
 						className="flex-1 border rounded-full px-4 py-2 outline-none"
 					/>
-					<Button onClick={onSend} classNames="!px-5">Gönder</Button>
-				</div>
+					<Button type="submit" disabled={sending || !text.trim()} classNames="!px-5 disabled:!bg-gray-400">
+						{sending ? "Gönderiliyor..." : "Gönder"}
+					</Button>
+				</form>
 			</div>
 		</div>
 	);

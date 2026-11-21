@@ -11,7 +11,10 @@ namespace PetStoreAPI.Extensions
         {
             var settingsSection = builder.Configuration.GetSection("ApiSettings:JwtOptions");
 
+            // Fail fast with a clear message instead of a NullReferenceException at startup
             var secret = settingsSection.GetValue<string>("Secret");
+            if (string.IsNullOrWhiteSpace(secret) || secret.Length < 32)
+                throw new InvalidOperationException("ApiSettings:JwtOptions:Secret must be configured (at least 32 characters).");
             var issuer = settingsSection.GetValue<string>("Issuer");
             var audience = settingsSection.GetValue<string>("Audience");
             var key = Encoding.ASCII.GetBytes(secret);

@@ -1,577 +1,334 @@
-﻿using AutoMapper;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using PetStoreAPI.Data;
-using PetStoreAPI.Models.Dto;
-using PetStoreAPI.Models;
 using Microsoft.EntityFrameworkCore;
+using PetStoreAPI.Data;
+using PetStoreAPI.Helpers;
+using PetStoreAPI.Mappings;
+using PetStoreAPI.Models;
+using PetStoreAPI.Models.Dto;
 using System.Net;
-using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+using static PetStoreAPI_Utility.SD;
 
 namespace PetStoreAPI.Controllers
 {
+    /// <summary>
+    /// Adoption listings. Every action returns the <see cref="ResponseDto"/> envelope and the
+    /// SAME status code as the HTTP response status (200, 201, 400, 403, 404, 500).
+    /// </summary>
     [Route("api/post")]
     [ApiController]
-
     public class PostController : ControllerBase
     {
+        private const string PlaceholderImageUrl = "https://placehold.co/600x400";
+
         private readonly ILogger<PostController> _logger;
-        private readonly IConfiguration _configuration;
-        private readonly UserManager<ApplicationUser> _userManager;
         private readonly AppDbContext _db;
-        private IMapper _mapper;
-        protected ResponseDto _response;
+        private readonly IWebHostEnvironment _env;
 
-
-        private readonly IServiceProvider _serviceProvider;
-
-
-        public PostController(
-            ILogger<PostController> logger,
-            IConfiguration configuration,
-            AppDbContext db,
-            UserManager<ApplicationUser> userManager,
-            IMapper mapper,
-            IServiceProvider serviceProvider
-
-            )
+        public PostController(ILogger<PostController> logger, AppDbContext db, IWebHostEnvironment env)
         {
-            _mapper = mapper;
-            _configuration = configuration;
-            _userManager = userManager;
-            _db = db;
-            _response = new();
             _logger = logger;
-            _serviceProvider = serviceProvider;
-
+            _db = db;
+            _env = env;
         }
 
-        [HttpGet]
-        [Route("GetAllPosts")]
-        public async Task<ResponseDto> GetAllPost()
+        /// <summary>Id of the authenticated caller, taken from the JWT (never from the request).</summary>
+        private string? CurrentUserId =>
+            User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+
+        private string PostImagesDirectory => Path.Combine(_env.ContentRootPath, "wwwroot", "PostImages");
+
+        private ObjectResult Respond(HttpStatusCode status, object? result = null, string message = "")
         {
-            try
+            var body = new ResponseDto
             {
-                // Sadece navigation property'leri Include et
-                var posts = await _db.Posts
-                    .Include(p => p.ApplicationUser)      // Navigation property ✓
-                    .Include(p => p.AdoptionRequests)     // Navigation property ✓
-                        .ThenInclude(ar => ar.RequesterUser) // İsteğe bağlı: AdoptionRequest'in User'ını da dahil et
-                    .OrderByDescending(p => p.PostTime)   // En yeni postlar önce
-                    .ToListAsync();
-
-                if (posts == null || !posts.Any())
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "İlan bulunamadı";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                _response.Result = _mapper.Map<List<PostDto>>(posts);
-                _response.IsSuccess = true;
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"İlanlar başarıyla getirildi. Toplam: {posts.Count}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"İlan getirme hatası, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
-            }
-            return _response;
+                Result = result,
+                StatusCode = status,
+                IsSuccess = (int)status < 400,
+                Message = message,
+            };
+            return StatusCode((int)status, body);
         }
 
-        [HttpGet]
-        [Route("GetPostById/{id:int}")]
-        public async Task<ResponseDto> GetPostById(int id, string? UserId)
+        private ObjectResult Forbidden(string message)
         {
-            try
-            {
-                // Sadece navigation property'leri Include et
-                var post = await _db.Posts
-                    .Include(p => p.ApplicationUser)      // Navigation property ✓
-                    .Include(p => p.AdoptionRequests)     // Navigation property ✓
-                        .ThenInclude(ar => ar.RequesterUser) // AdoptionRequest'lerin User'larını da getir
-                    .FirstOrDefaultAsync(p => p.PostId == id);
-
-                if (post == null)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "İlan bulunamadı";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                // UserId kontrolü isteğe bağlı - ihtiyacınıza göre kaldırabilirsiniz
-                if (!string.IsNullOrEmpty(UserId) && post.UserId != UserId)
-                {
-                    _logger.LogWarning($"Post sahibi farklı. PostId: {id}, RequestUserId: {UserId}, PostOwnerId: {post.UserId}");
-                    // Bu kontrolü kaldırmak isteyebilirsiniz çünkü herkes her postu görebilmeli
-                }
-
-                // Post'u DTO'ya map et
-                var postDto = _mapper.Map<PostDto>(post);
-
-                _response.Result = postDto; // Gereksiz wrapper'ı kaldırdım
-                _response.IsSuccess = true;
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"İlan başarıyla getirildi. PostId: {id}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"İlan getirme hatası. PostId: {id}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
-            }
-
-            return _response;
+            _logger.LogWarning("Yetkisiz işlem denemesi. UserId: {UserId}, Mesaj: {Message}", CurrentUserId, message);
+            return Respond(HttpStatusCode.Forbidden, message: message);
         }
 
-        [HttpGet]
-        [Route("GetPostsByUserId/{userId}")]
-        public async Task<ResponseDto> GetPostsByUserId(string userId)
+        private IQueryable<Post> PostsWithOwner() =>
+            _db.Posts.AsNoTracking().Include(p => p.ApplicationUser);
+
+        [HttpGet("GetAllPosts")]
+        public async Task<ActionResult<ResponseDto>> GetAllPosts()
         {
-            try
-            {
-                var userPosts = await _db.Posts
-                    .Include(p => p.ApplicationUser)
-                    .Include(p => p.AdoptionRequests)
-                        .ThenInclude(ar => ar.RequesterUser)
-                    .Where(p => p.UserId == userId)
-                    .OrderByDescending(p => p.PostTime)
-                    .ToListAsync();
+            var posts = await PostsWithOwner()
+                .OrderByDescending(p => p.PostTime)
+                .ToListAsync();
 
-                if (userPosts == null || !userPosts.Any())
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Bu kullanıcıya ait ilan bulunamadı";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                _response.Result = _mapper.Map<List<PostDto>>(userPosts);
-                _response.IsSuccess = true;
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"Kullanıcının ilanları getirildi. UserId: {userId}, Toplam: {userPosts.Count}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Kullanıcı ilanları getirme hatası. UserId: {userId}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
-            }
-            return _response;
+            return Respond(HttpStatusCode.OK, posts.ToDtos());
         }
 
+        [HttpGet("GetPostById/{id:int}")]
+        public async Task<ActionResult<ResponseDto>> GetPostById(int id)
+        {
+            var post = await PostsWithOwner().FirstOrDefaultAsync(p => p.PostId == id);
+            if (post == null)
+                return Respond(HttpStatusCode.NotFound, message: "İlan bulunamadı");
 
-        [HttpPost]
-        [Route("CreatePost")]
+            return Respond(HttpStatusCode.OK, post.ToDto());
+        }
+
+        [HttpGet("GetPostsByUserId/{userId}")]
+        public async Task<ActionResult<ResponseDto>> GetPostsByUserId(string userId)
+        {
+            var posts = await PostsWithOwner()
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.PostTime)
+                .ToListAsync();
+
+            return Respond(HttpStatusCode.OK, posts.ToDtos());
+        }
+
+        [HttpPost("CreatePost")]
         [Authorize]
-        public async Task<ResponseDto> CreatePost(PostDto postDto)
+        public async Task<ActionResult<ResponseDto>> CreatePost(PostDto postDto)
         {
+            // İlan yalnızca token sahibi adına oluşturulabilir
+            if (postDto.UserId != CurrentUserId)
+                return Forbidden("Başka bir kullanıcı adına ilan oluşturamazsınız.");
+
+            // Dosya, kayıttan ÖNCE doğrulanır: geçersiz yüklemede yetim kayıt kalmaz
+            string? extension = null;
+            if (postDto.Image is { Length: > 0 })
+            {
+                var error = ImageFileValidator.Validate(postDto.Image, out var ext);
+                if (error != null)
+                    return Respond(HttpStatusCode.BadRequest, message: error);
+                extension = ext;
+            }
+
+            if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == postDto.UserId))
+                return Respond(HttpStatusCode.NotFound, message: "Kullanıcı bulunamadı.");
+
+            var post = postDto.ToNewEntity();
+            post.PostTime = DateTime.UtcNow;
+            post.IsAdopted = false;
+            post.UserId = postDto.UserId;
+            post.ImageUrl = PlaceholderImageUrl;
+
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+            _db.Posts.Add(post);
+            await _db.SaveChangesAsync(); // PostId gerekir (dosya adı)
+
+            string? writtenFile = null;
             try
             {
-                // Model validasyonu
-                if (!ModelState.IsValid)
+                if (postDto.Image != null && extension != null)
                 {
-                    _response.IsSuccess = false;
-                    _response.Message = "Geçersiz veri girişi.";
-                    return _response;
+                    (post.ImageUrl, post.ImageLocalPath, writtenFile) = await SaveImageAsync(postDto.Image, post.PostId, extension);
+                    await _db.SaveChangesAsync();
                 }
-
-                // Kullanıcının var olup olmadığını kontrol et (AsNoTracking ile)
-                var userExists = await _db.Users
-                    .AsNoTracking()
-                    .AnyAsync(u => u.Id == postDto.UserId);
-
-                if (!userExists)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Kullanıcı bulunamadı.";
-                    return _response;
-                }
-
-                // AutoMapper ile mapping (navigation property'ler ignore edildiği için güvenli)
-                Post post = _mapper.Map<Post>(postDto);
-
-                // Manuel olarak set edilmesi gereken alanlar
-                post.PostTime = DateTime.Now;
-                post.IsAdopted = false;
-                post.UserId = postDto.UserId; // UserId'yi eksplisit olarak set et
-
-                // Post'u kaydet
-                _db.Posts.Add(post);
-                await _db.SaveChangesAsync();
-
-                // Resim işlemleri
-                if (postDto.Image != null && postDto.Image.Length > 0)
-                {
-                    // Dosya validasyonu
-                    var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
-                    var extension = Path.GetExtension(postDto.Image.FileName).ToLowerInvariant();
-
-                    if (!allowedExtensions.Contains(extension))
-                    {
-                        _response.IsSuccess = false;
-                        _response.Message = "Geçersiz dosya formatı.";
-                        return _response;
-                    }
-
-                    string fileName = post.PostId + extension;
-                    string filePath = Path.Combine("wwwroot", "PostImages", fileName);
-                    string fullPath = Path.Combine(Directory.GetCurrentDirectory(), filePath);
-
-                    var directory = Path.GetDirectoryName(fullPath);
-                    if (!Directory.Exists(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-
-                    using (var fileStream = new FileStream(fullPath, FileMode.Create))
-                    {
-                        await postDto.Image.CopyToAsync(fileStream);
-                    }
-
-                    var baseUrl = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host.Value}{HttpContext.Request.PathBase.Value}";
-                    post.ImageUrl = baseUrl + "/PostImages/" + fileName;
-                    post.ImageLocalPath = filePath;
-                }
-                else
-                {
-                    post.ImageUrl = "https://placehold.co/600x400";
-                }
-
-                _db.Posts.Update(post);
-                await _db.SaveChangesAsync();
-
-                // Response için Post'u PostDto'ya map et (User bilgisi dahil)
-                var savedPost = await _db.Posts
-                    .AsNoTracking()
-                    .Include(p => p.ApplicationUser)
-                    .FirstOrDefaultAsync(p => p.PostId == post.PostId);
-
-                _response.Result = _mapper.Map<PostDto>(savedPost);
-                _response.IsSuccess = true;
-                _response.Message = "Post başarıyla oluşturuldu.";
+                await transaction.CommitAsync();
             }
             catch (Exception ex)
             {
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
+                _logger.LogError(ex, "İlan oluşturma hatası. UserId: {UserId}", postDto.UserId);
+                if (writtenFile != null && System.IO.File.Exists(writtenFile))
+                    System.IO.File.Delete(writtenFile);
+                throw; // işlem geri alınır, global hata yakalayıcı 500 döner
             }
 
-            return _response;
+            var saved = await PostsWithOwner().FirstAsync(p => p.PostId == post.PostId);
+            _logger.LogInformation("İlan oluşturuldu. PostId: {PostId}, UserId: {UserId}", post.PostId, post.UserId);
+            return Respond(HttpStatusCode.Created, saved.ToDto(), "Post başarıyla oluşturuldu.");
         }
 
-        [HttpPut]
-        [Route("UpdatePost")]
+        [HttpPut("UpdatePost")]
         [Authorize]
-        public async Task<ResponseDto> UpdatePost(PostDto postDto)
+        public async Task<ActionResult<ResponseDto>> UpdatePost(PostDto postDto)
         {
-            try
+            var existingPost = await _db.Posts.FirstOrDefaultAsync(p => p.PostId == postDto.PostId);
+            if (existingPost == null)
+                return Respond(HttpStatusCode.NotFound, message: "Güncellenecek post bulunamadı.");
+
+            if (existingPost.UserId != CurrentUserId)
+                return Forbidden("Sadece kendi ilanınızı güncelleyebilirsiniz.");
+
+            string? extension = null;
+            if (postDto.Image is { Length: > 0 })
             {
-                // Model validasyonu
-                if (!ModelState.IsValid)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Geçersiz veri girişi.";
-                    _response.StatusCode = HttpStatusCode.BadRequest;
-                    return _response;
-                }
-
-                // Post'un var olup olmadığını kontrol et
-                var existingPost = await _db.Posts
-                    .FirstOrDefaultAsync(p => p.PostId == postDto.PostId);
-
-                if (existingPost == null)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Güncellenecek post bulunamadı.";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                // Kullanıcının var olup olmadığını kontrol et
-                var userExists = await _db.Users
-                    .AsNoTracking()
-                    .AnyAsync(u => u.Id == postDto.UserId);
-
-                if (!userExists)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Kullanıcı bulunamadı.";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                // Mevcut post'u güncelle (Navigation property'leri ignore ettiğimiz için güvenli)
-                existingPost.Title = postDto.Title;
-                existingPost.PetName = postDto.PetName;
-                existingPost.PetType = postDto.PetType;
-                existingPost.Description = postDto.Description;
-                existingPost.PostLatitude = postDto.PostLatitude;
-                existingPost.PostLongitude = postDto.PostLongitude;
-                // IsAdopted ve PostTime güncellemiyoruz (business logic'e göre)
-
-                // Resim güncellemesi
-                if (postDto.Image != null && postDto.Image.Length > 0)
-                {
-                    // Dosya validasyonu
-                    var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif" };
-                    var extension = Path.GetExtension(postDto.Image.FileName).ToLowerInvariant();
-
-                    if (!allowedExtensions.Contains(extension))
-                    {
-                        _response.IsSuccess = false;
-                        _response.Message = "Geçersiz dosya formatı. Sadece jpg, jpeg, png, gif dosyaları kabul edilir.";
-                        _response.StatusCode = HttpStatusCode.BadRequest;
-                        return _response;
-                    }
-
-                    // Dosya boyutu kontrolü (5MB max)
-                    if (postDto.Image.Length > 5 * 1024 * 1024)
-                    {
-                        _response.IsSuccess = false;
-                        _response.Message = "Dosya boyutu 5MB'dan büyük olamaz.";
-                        _response.StatusCode = HttpStatusCode.BadRequest;
-                        return _response;
-                    }
-
-                    // Eski resmi sil
-                    if (!string.IsNullOrEmpty(existingPost.ImageLocalPath))
-                    {
-                        var oldFilePathDirectory = Path.Combine(Directory.GetCurrentDirectory(), existingPost.ImageLocalPath);
-                        FileInfo file = new FileInfo(oldFilePathDirectory);
-                        if (file.Exists)
-                        {
-                            file.Delete();
-                        }
-                    }
-
-                    // Yeni resmi kaydet
-                    string fileName = existingPost.PostId + extension;
-                    string filePath = Path.Combine("wwwroot", "PostImages", fileName);
-                    string fullPath = Path.Combine(Directory.GetCurrentDirectory(), filePath);
-
-                    var directory = Path.GetDirectoryName(fullPath);
-                    if (!Directory.Exists(directory))
-                    {
-                        Directory.CreateDirectory(directory);
-                    }
-
-                    using (var fileStream = new FileStream(fullPath, FileMode.Create))
-                    {
-                        await postDto.Image.CopyToAsync(fileStream);
-                    }
-
-                    var baseUrl = $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host.Value}{HttpContext.Request.PathBase.Value}";
-                    existingPost.ImageUrl = baseUrl + "/PostImages/" + fileName;
-                    existingPost.ImageLocalPath = filePath;
-                }
-
-                _db.Posts.Update(existingPost);
-                await _db.SaveChangesAsync();
-
-                // Güncellenmiş post'u al (User bilgisi ile)
-                var updatedPost = await _db.Posts
-                    .AsNoTracking()
-                    .Include(p => p.ApplicationUser)
-                    .FirstOrDefaultAsync(p => p.PostId == existingPost.PostId);
-
-                _response.Result = _mapper.Map<PostDto>(updatedPost);
-                _response.IsSuccess = true;
-                _response.Message = "Post başarıyla güncellendi.";
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"Post güncellendi. PostId: {postDto.PostId}");
+                var error = ImageFileValidator.Validate(postDto.Image, out var ext);
+                if (error != null)
+                    return Respond(HttpStatusCode.BadRequest, message: error);
+                extension = ext;
             }
-            catch (Exception ex)
+
+            existingPost.Title = postDto.Title?.Trim();
+            existingPost.PetName = postDto.PetName?.Trim();
+            existingPost.PetType = postDto.PetType?.Trim();
+            existingPost.Description = postDto.Description?.Trim();
+            existingPost.PostLatitude = postDto.PostLatitude;
+            existingPost.PostLongitude = postDto.PostLongitude;
+            // IsAdopted, PostTime ve sahiplik bilinçli olarak güncellenmez
+
+            if (postDto.Image != null && extension != null)
             {
-                _logger.LogError(ex, $"Post güncelleme hatası. PostId: {postDto.PostId}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
+                var oldFile = existingPost.ImageLocalPath;
+                (existingPost.ImageUrl, existingPost.ImageLocalPath, var newFile) =
+                    await SaveImageAsync(postDto.Image, existingPost.PostId, extension);
+
+                // Eski dosya farklı uzantıdaysa sil (aynı adda ise zaten üzerine yazıldı)
+                if (!string.IsNullOrEmpty(oldFile))
+                {
+                    var oldFull = Path.Combine(_env.ContentRootPath, oldFile);
+                    if (!string.Equals(Path.GetFullPath(oldFull), Path.GetFullPath(newFile), StringComparison.OrdinalIgnoreCase))
+                        TryDeleteFile(oldFull);
+                }
             }
-            return _response;
+
+            await _db.SaveChangesAsync();
+
+            var updated = await PostsWithOwner().FirstAsync(p => p.PostId == existingPost.PostId);
+            _logger.LogInformation("İlan güncellendi. PostId: {PostId}", existingPost.PostId);
+            return Respond(HttpStatusCode.OK, updated.ToDto(), "Post başarıyla güncellendi.");
         }
 
-        [HttpDelete]
-        [Route("DeletePost/{id:int}")]
+        [HttpDelete("DeletePost/{id:int}")]
         [Authorize]
-        public async Task<ResponseDto> DeletePost(int id)
+        public async Task<ActionResult<ResponseDto>> DeletePost(int id)
         {
-            try
-            {
-                // Post'un var olup olmadığını kontrol et
-                var post = await _db.Posts
-                    .FirstOrDefaultAsync(p => p.PostId == id);
+            var post = await _db.Posts.FirstOrDefaultAsync(p => p.PostId == id);
+            if (post == null)
+                return Respond(HttpStatusCode.NotFound, message: "Silinecek post bulunamadı.");
 
-                if (post == null)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Silinecek post bulunamadı.";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
+            if (post.UserId != CurrentUserId)
+                return Forbidden("Sadece kendi ilanınızı silebilirsiniz.");
 
-                // İlişkili AdoptionRequest'lerin var olup olmadığını kontrol et
-                var hasAdoptionRequests = await _db.AdoptionRequests
-                    .AnyAsync(ar => ar.PostId == id);
+            var hasActiveAdoption = await _db.AdoptionRequests
+                .AnyAsync(ar => ar.PostId == id && ar.IsActive == true);
+            if (hasActiveAdoption)
+                return Respond(HttpStatusCode.BadRequest,
+                    message: "Sahiplenilmiş bir ilan silinemez. Önce sahiplenmeyi iptal edin.");
 
-                if (hasAdoptionRequests)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Bu posta ait sahiplenme talepleri bulunduğu için silinemez.";
-                    _response.StatusCode = HttpStatusCode.BadRequest;
-                    return _response;
-                }
+            // Pasif (iptal edilmiş) talepler ilanla birlikte cascade silinir
+            _db.Posts.Remove(post);
+            await _db.SaveChangesAsync();
 
-                // Post'un resmini sil
-                if (!string.IsNullOrEmpty(post.ImageLocalPath))
-                {
-                    var oldFilePathDirectory = Path.Combine(Directory.GetCurrentDirectory(), post.ImageLocalPath);
-                    FileInfo file = new FileInfo(oldFilePathDirectory);
-                    if (file.Exists)
-                    {
-                        try
-                        {
-                            file.Delete();
-                            _logger.LogInformation($"Post resmi silindi: {oldFilePathDirectory}");
-                        }
-                        catch (Exception fileEx)
-                        {
-                            _logger.LogWarning(fileEx, $"Post resmi silinemedi: {oldFilePathDirectory}");
-                            // Dosya silinmese de post'u silebiliriz
-                        }
-                    }
-                }
+            if (!string.IsNullOrEmpty(post.ImageLocalPath))
+                TryDeleteFile(Path.Combine(_env.ContentRootPath, post.ImageLocalPath));
 
-                // Post'u sil
-                _db.Posts.Remove(post);
-                await _db.SaveChangesAsync();
-
-                _response.IsSuccess = true;
-                _response.Message = "Post başarıyla silindi.";
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"Post silindi. PostId: {id}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Post silme hatası. PostId: {id}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
-            }
-            return _response;
+            _logger.LogInformation("İlan silindi. PostId: {PostId}", id);
+            return Respond(HttpStatusCode.OK, message: "Post başarıyla silindi.");
         }
 
-        [HttpPost]
-        [Route("AdoptPost/{id:int}")]
+        [HttpPost("AdoptPost/{id:int}")]
         [Authorize]
-        public async Task<ResponseDto> AdoptPost(int id)
+        public async Task<ActionResult<ResponseDto>> AdoptPost(int id)
         {
-            try
+            var post = await _db.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.PostId == id);
+            if (post == null)
+                return Respond(HttpStatusCode.NotFound, message: "Sahiplenilecek post bulunamadı.");
+
+            var userId = CurrentUserId!;
+            if (post.UserId == userId)
+                return Forbidden("Kendi ilanınızı sahiplenemezsiniz.");
+
+            var adopter = await _db.ApplicationUsers.FirstOrDefaultAsync(u => u.Id == userId);
+            if (adopter == null)
+                return Respond(HttpStatusCode.NotFound, message: "Kullanıcı bulunamadı.");
+
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+
+            // Atomik koşullu güncelleme: aynı anda gelen iki istekten yalnızca biri kazanır
+            var affected = await _db.Posts
+                .Where(p => p.PostId == id && !p.IsAdopted)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.IsAdopted, true));
+            if (affected == 0)
+                return Respond(HttpStatusCode.BadRequest, message: "Bu ilan zaten sahiplenilmiş.");
+
+            // Sahiplenme kaydı: kimin, ne zaman sahiplendiği izlenir ve silme kuralı uygulanabilir
+            _db.AdoptionRequests.Add(new AdoptionRequest
             {
-                // Post'un var olup olmadığını kontrol et
-                var post = await _db.Posts
-                    .FirstOrDefaultAsync(p => p.PostId == id);
+                PostId = id,
+                UserId = userId,
+                RequesterUser = adopter,
+                Message = string.Empty,
+                Status = RequestStatus.Approved,
+                RequestDate = DateTime.UtcNow,
+                IsActive = true,
+            });
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-                if (post == null)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Sahiplenilecek post bulunamadı.";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                // Zaten sahiplenilmiş mi kontrol et
-                if (post.IsAdopted)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Bu ilan zaten sahiplenilmiş.";
-                    _response.StatusCode = HttpStatusCode.BadRequest;
-                    return _response;
-                }
-
-                // Sahiplenme durumunu güncelle
-                post.IsAdopted = true;
-                await _db.SaveChangesAsync();
-
-                // Güncellenmiş post'u döndür
-                var updatedPost = await _db.Posts
-                    .AsNoTracking()
-                    .Include(p => p.ApplicationUser)
-                    .FirstOrDefaultAsync(p => p.PostId == id);
-
-                _response.Result = _mapper.Map<PostDto>(updatedPost);
-                _response.IsSuccess = true;
-                _response.Message = $"'{post.PetName}' isimli hayvan başarıyla sahiplenildi!";
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"Post sahiplenildi. PostId: {id}, PetName: {post.PetName}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, $"Post sahiplendirme hatası. PostId: {id}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
-            }
-            return _response;
+            var updated = await PostsWithOwner().FirstAsync(p => p.PostId == id);
+            _logger.LogInformation("İlan sahiplenildi. PostId: {PostId}, AdopterId: {UserId}", id, userId);
+            return Respond(HttpStatusCode.OK, updated.ToDto(),
+                $"'{post.PetName}' isimli hayvan başarıyla sahiplenildi!");
         }
 
-        // Bonus: Sahiplenmeyi iptal etme metodu (isteğe bağlı)
-        [HttpPost]
-        [Route("CancelAdoption/{id:int}")]
+        [HttpPost("CancelAdoption/{id:int}")]
         [Authorize]
-        public async Task<ResponseDto> CancelAdoption(int id)
+        public async Task<ActionResult<ResponseDto>> CancelAdoption(int id)
+        {
+            var post = await _db.Posts.FirstOrDefaultAsync(p => p.PostId == id);
+            if (post == null)
+                return Respond(HttpStatusCode.NotFound, message: "Post bulunamadı.");
+
+            // Sahiplenmeyi yalnızca ilan sahibi iptal edebilir
+            if (post.UserId != CurrentUserId)
+                return Forbidden("Sadece ilan sahibi sahiplenmeyi iptal edebilir.");
+
+            if (!post.IsAdopted)
+                return Respond(HttpStatusCode.BadRequest, message: "Bu ilan zaten sahiplenilmemiş durumda.");
+
+            post.IsAdopted = false;
+            var activeRequests = await _db.AdoptionRequests
+                .Where(ar => ar.PostId == id && ar.IsActive == true)
+                .ToListAsync();
+            foreach (var request in activeRequests)
+            {
+                request.IsActive = false;
+                request.Status = RequestStatus.Rejected;
+                request.Response = "Sahiplenme ilan sahibi tarafından iptal edildi.";
+            }
+            await _db.SaveChangesAsync();
+
+            var updated = await PostsWithOwner().FirstAsync(p => p.PostId == id);
+            _logger.LogInformation("Sahiplenme iptal edildi. PostId: {PostId}", id);
+            return Respond(HttpStatusCode.OK, updated.ToDto(),
+                $"'{post.PetName}' isimli hayvanın sahiplenme durumu iptal edildi.");
+        }
+
+        /// <returns>(public URL, content-root-relative path, absolute file path)</returns>
+        private async Task<(string Url, string LocalPath, string FullPath)> SaveImageAsync(IFormFile image, int postId, string extension)
+        {
+            Directory.CreateDirectory(PostImagesDirectory);
+            var fileName = postId + extension;
+            var fullPath = Path.Combine(PostImagesDirectory, fileName);
+
+            await using (var fileStream = new FileStream(fullPath, FileMode.Create))
+            {
+                await image.CopyToAsync(fileStream);
+            }
+
+            var baseUrl = $"{Request.Scheme}://{Request.Host.Value}{Request.PathBase.Value}";
+            return ($"{baseUrl}/PostImages/{fileName}", Path.Combine("wwwroot", "PostImages", fileName), fullPath);
+        }
+
+        private void TryDeleteFile(string fullPath)
         {
             try
             {
-                var post = await _db.Posts
-                    .FirstOrDefaultAsync(p => p.PostId == id);
-
-                if (post == null)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Post bulunamadı.";
-                    _response.StatusCode = HttpStatusCode.NotFound;
-                    return _response;
-                }
-
-                if (!post.IsAdopted)
-                {
-                    _response.IsSuccess = false;
-                    _response.Message = "Bu ilan zaten sahiplenilmemiş durumda.";
-                    _response.StatusCode = HttpStatusCode.BadRequest;
-                    return _response;
-                }
-
-                post.IsAdopted = false;
-                await _db.SaveChangesAsync();
-
-                var updatedPost = await _db.Posts
-                    .AsNoTracking()
-                    .Include(p => p.ApplicationUser)
-                    .FirstOrDefaultAsync(p => p.PostId == id);
-
-                _response.Result = _mapper.Map<PostDto>(updatedPost);
-                _response.IsSuccess = true;
-                _response.Message = $"'{post.PetName}' isimli hayvanın sahiplenme durumu iptal edildi.";
-                _response.StatusCode = HttpStatusCode.OK;
-                _logger.LogInformation($"Post sahiplenme durumu iptal edildi. PostId: {id}");
+                if (System.IO.File.Exists(fullPath))
+                    System.IO.File.Delete(fullPath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Sahiplenme iptal hatası. PostId: {id}, Hata: {ex.Message}");
-                _response.IsSuccess = false;
-                _response.Message = ex.Message;
-                _response.StatusCode = HttpStatusCode.InternalServerError;
+                // Dosya silinemese de veri tutarlılığı korunur; sadece loglanır
+                _logger.LogWarning(ex, "Resim dosyası silinemedi: {Path}", fullPath);
             }
-            return _response;
         }
     }
 }

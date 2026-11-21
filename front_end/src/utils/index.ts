@@ -15,3 +15,6 @@ export const formatTime = (dateString: string) => {
     if (diffInHours < 168) return `${Math.floor(diffInHours / 24)} gün önce`;
     return date.toLocaleDateString("tr-TR");
 };
+
+/** Must match ImageFileValidator.MaxFileSizeBytes on the backend. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

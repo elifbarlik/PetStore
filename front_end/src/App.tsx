@@ -1,16 +1,19 @@
+import { lazy } from "react";
 import { Route, Routes } from "react-router";
 import RootLayout from "./pages/RootLayout";
 import Home from "./pages/home";
 import NotFound from "./pages/not-found";
-import Login from "./pages/auth/login";
 import PetList from "./pages/PetList";
-import Register from "./pages/auth/register";
 import ProfileLayout from "./pages/profile/ProfileLayout";
-import Profile from "./pages/profile/profile";
 import ProtectedRoute from "./components/ProtectedRoot";
-import PetDetail from "./pages/pet/PetDetail";
-import ChatList from "./pages/chat/ChatList";
-import ChatRoom from "./pages/chat/ChatRoom";
+
+// Route-level code splitting: these pages are only downloaded when visited
+const Login = lazy(() => import("./pages/auth/login"));
+const Register = lazy(() => import("./pages/auth/register"));
+const Profile = lazy(() => import("./pages/profile/profile"));
+const PetDetail = lazy(() => import("./pages/pet/PetDetail"));
+const ChatList = lazy(() => import("./pages/chat/ChatList"));
+const ChatRoom = lazy(() => import("./pages/chat/ChatRoom"));
 
 function App() {
     return (

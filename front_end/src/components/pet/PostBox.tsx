@@ -44,7 +44,7 @@ export default function PostBox({ post }: { post: Post }) {
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                         <User size={16} />
                         <span className="font-medium">
-                            {post.user.userName}
+                            {post.user?.userName}
                         </span>
                     </div>
 
@@ -54,7 +54,7 @@ export default function PostBox({ post }: { post: Post }) {
                             <span>{formatTime(post.postTime)}</span>
                         </div>
 
-                        {post.postLatitude && post.postLongitude && (
+                        {post.postLatitude != null && post.postLongitude != null && (
                             <div className="flex items-center gap-1">
                                 <MapPin size={16} />
                                 <span>Konum mevcut</span>
@@ -64,9 +64,10 @@ export default function PostBox({ post }: { post: Post }) {
                 </div>
 
                 <div className="flex gap-3 pt-3">
-                    <button className="flex-1 bg-primary text-white py-2.5 px-4 rounded-xl font-medium hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
+                    {/* Visual call-to-action only: the whole card is a link (no nested interactive element) */}
+                    <span className="flex-1 bg-primary text-white py-2.5 px-4 rounded-xl font-medium group-hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
                         {post.isAdopted ? "Detayları Gör" : "Sahiplen"}
-                    </button>
+                    </span>
                 </div>
             </div>
         </div>

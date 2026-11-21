@@ -13,7 +13,7 @@ export default function NotFound() {
             <p className="text-copy/70 mb-6 max-w-md">
                 Aradığınız sayfa bulunamadı veya taşınmış olabilir.
             </p>
-            <Button isLink href="/" className="mt-2">
+            <Button isLink href="/" classNames="mt-2">
                 Ana Sayfaya Dön
             </Button>
         </section>

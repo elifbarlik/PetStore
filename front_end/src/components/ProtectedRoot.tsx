@@ -1,4 +1,4 @@
-import { Navigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../hooks/useAuth";
 
 type ProtectedRouteProps = {
@@ -11,9 +11,12 @@ export default function ProtectedRoute({
     children,
 }: ProtectedRouteProps) {
     const { isAuth } = useAuth();
+    const location = useLocation();
 
     if (!isAuth) {
-        return <Navigate to={redirectPath} />;
+        // replace: "back" must not bounce into the protected page again;
+        // from: login returns the user to the page they wanted
+        return <Navigate to={redirectPath} replace state={{ from: location.pathname }} />;
     }
 
     return children;

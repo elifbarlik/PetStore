@@ -4,9 +4,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Lock, User, AlertCircle } from "lucide-react";
 import { useSelector, useDispatch } from "react-redux";
-import { login } from "../../features/auth/authSlice";
+import { clearError, login } from "../../features/auth/authSlice";
 import type { RootState, AppDispatch } from "../../store/store";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 const loginSchema = z.object({
     userName: z
@@ -24,9 +24,16 @@ type LoginFormData = z.infer<typeof loginSchema>;
 export default function Login() {
     const [showPassword, setShowPassword] = React.useState(false);
     const dispatch = useDispatch<AppDispatch>();
-    const { status, error } = useSelector((state: RootState) => state.auth);
+    const { status, error, token } = useSelector((state: RootState) => state.auth);
 
     const navigate = useNavigate();
+    const location = useLocation();
+    const redirectTo = (location.state as { from?: string } | null)?.from ?? "/";
+
+    // Errors are shared in the auth slice; start every visit with a clean form
+    React.useEffect(() => {
+        dispatch(clearError());
+    }, [dispatch]);
 
     const {
         register,
@@ -45,7 +52,7 @@ export default function Login() {
             clearErrors();
             await dispatch(login(data)).unwrap();
             reset();
-            navigate("/");
+            navigate(redirectTo, { replace: true });
         } catch {
             setError("root", {
                 message: "Giriş işlemi başarısız oldu.",
@@ -54,6 +61,9 @@ export default function Login() {
     };
 
     const isLoading = status === "loading" || isSubmitting;
+
+    // Already logged in: the auth forms are not useful
+    if (token) return <Navigate to={redirectTo} replace />;
 
     return (
         <div className="min-h-screen flex justify-center pt-8 containerx">
